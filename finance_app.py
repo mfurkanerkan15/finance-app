@@ -7,14 +7,14 @@ from datetime import datetime
 
 proje = tk.Tk()
 proje.title("FİNANS UYGULAMASI")
-proje.geometry("720x480+400+100")
+proje.geometry("720x520+400+100")
 proje.configure(bg="#c5cfde")
 proje.resizable(False, False)
 
 
 balance = 0
 # file_name = "finans_deneme.csv"
-file_name = "finans_deneme.csv"
+file_name = "finans_ilk_deneme.csv"
 
 # VERİLERİ KAYDETME
 def save_to_csv():
@@ -100,8 +100,35 @@ def delete_entry():
         messagebox.showwarning("Seçim hatası", "Silinecek bir işlem seçin!")
 
 
-# AYLIK KAR-ZARAR FONKSİYONU
+# AYLIK KAR-ZARAR GRAFİĞİ
+def monthly_status():
+    df = pd.read_csv(file_name)
+    df["TARİH"] = pd.to_datetime(df["TARİH"])
+    
+    df["AY"] = df["TARİH"].dt.strftime("%Y-%m")
+    monthly_data = df.groupby(["AY", "TÜR"])["MİKTAR"].sum().unstack().fillna(0)
 
+    # Kar Zarar Hesaplama
+    monthly_data["KAR/ZARAR"] = monthly_data.get("GELEN", 0) - monthly_data.get("GİDEN", 0)
+
+    months = monthly_data.index
+    profit_loss_values = monthly_data["KAR/ZARAR"]
+
+    # Grafik Çizme
+    fig, ax = plt.subplots(figsize=(8,7))
+    colors = ["green" if val >= 0 else "red" for val in profit_loss_values]
+    bars = ax.bar(months, profit_loss_values, color=colors)
+
+    ax.set_xticks(range(len(months)))
+    ax.set_xticklabels(months, rotation=45)
+    ax.set_xlabel("Aylar")
+    ax.set_ylabel("Kâr / Zarar (TL)")
+    ax.set_title("Aylık Kâr ve Zarar Tablosu")
+    ax.axhline(0, color="black", linewidth=1)
+    ax.bar_label(bars, fmt="%.0f", label_type="center", fontsize=10, color="black")
+    plt.get_current_fig_manager().window.wm_geometry("+50+30")
+    plt.tight_layout()
+    plt.show()
 
 
 #AYLIK GELİR GRAFİĞİ
@@ -187,7 +214,7 @@ def expense_pie_chart(selected_month):
     
     # Ay girişi için Entry ekle
     month_input = tk.Entry(plt.gcf().canvas.manager.window, width=7, font="Helvatica 14")
-    month_input.insert(0, selected_month.strftime('%Y-%m'))  # Varsayılan olarak mevcut ayı göster
+    month_input.insert(0, selected_month.strftime('%Y-%m'))
     month_input.pack(pady=10)
 
     # Değişiklikleri onaylamak için bir buton ekle
@@ -213,11 +240,109 @@ def current_month_expense_pie_chart():
     expense_pie_chart(selected_month)
 
 
-# YENİ PENCERE EKLEME
+# GELİR KATAGORİ YENİ PENCERE EKLEME
+def income_new_window():
+    catagory_window = tk.Toplevel(proje)
+    catagory_window.title("Katagoriye Göre Gelirler")
+    catagory_window.geometry("380x580+50+100")
+    catagory_window.config(bg="#c5cfde")
+    catagory_window.resizable(False, False)
+
+    # GELENLERİ BULMA VE TOPLAMA
+    income = {}
+    for item in transaction_table.get_children():
+        item_values = transaction_table.item(item)["values"]
+        if item_values[0] == "GELEN":
+            description = item_values[1]
+            amount = item_values[2]
+            if description in income:
+                income[description] += int(amount)
+            else:
+                income[description] = int(amount)
+
+    if not income:
+        messagebox.showwarning("Veri yok","Gider verisi bulunamadı")
+        catagory_window.destroy()
+        return
+
+    # YENİ PENCERE ETİKETLERİ
+    new_window_title = tk.Label(catagory_window, text="KATEGORİYE GÖRE GELİR TABLOLARI", font="Helvatica 13", bg="#c5cfde")
+    new_window_title.pack(pady=(17,25))
+
+    # Seperator Ekleme
+    separator = ttk.Separator(catagory_window, orient="horizontal")
+    separator.place(x=40, y=55, relwidth=0.8)
+
+    # Butonları Oluşturma
+    for description, amount in sorted(income.items()):
+        description_button = tk. Button(catagory_window, text=f"{description}", font="Helvatica 11", width=25, command=lambda desc=description, amt=amount:income_detail_table(desc))
+        description_button.pack(pady=3)
+
+    # DETAY İÇİN YENİ PENCERE OLUŞTURMA
+    def income_detail_table(description):
+        income_detail_window = tk.Toplevel()
+        income_detail_window.title(f"{description} Detay Tablosu")
+        income_detail_window.geometry("550x420+120+100")
+        income_detail_window.configure(bg="#c5cfde")
+        income_detail_window.resizable(False, False)
+
+        # DETAY TREE TABLOSU
+        columns = ("AÇIKLAMA", "MİKTAR", "TARİH")
+        income_tree_table = ttk.Treeview(income_detail_window, columns=columns, show="headings")
+        for col in columns:
+            income_tree_table.heading(col, text=col)
+
+        income_tree_table.column("AÇIKLAMA", width=150)    
+        income_tree_table.column("MİKTAR", width=75)    
+        income_tree_table.column("TARİH", width=75)    
+
+        # GELEN DETAYLAR
+        for item in transaction_table.get_children():
+            item_values = transaction_table.item(item)["values"]
+            if item_values[0] == "GELEN" and item_values[1] == description:
+                income_tree_table.insert("", tk.END, values=(item_values[1], item_values[2], item_values[3]))
+
+
+        # Treeview için scrolbar
+        scrollbar = ttk.Scrollbar(income_detail_window, orient="vertical", command=income_tree_table.yview)
+        income_tree_table.configure(yscroll=scrollbar.set)
+        scrollbar.place(relx=0.91, rely=0.22, relheight=0.59)
+
+        income_tree_table.place(relx=0.04, rely=0.175, relwidth=0.92, relheight=0.67)
+
+        detail_window_title = tk.Label(income_detail_window, text=f"{description} Detay Tablosu", font="Helvatica 17", bg="#c5cfde")
+        detail_window_title.place(relx=0.5, rely=0.075, anchor="center") 
+
+        # Seperator Ekleme
+        separator = ttk.Separator(income_detail_window, orient='horizontal')
+        separator.place(relx=0.1, rely=0.135, relwidth=0.8) 
+
+        # Sİl BUTONU FONKSİYONU
+        def delete_entry_from_details():
+            selected_item = income_tree_table.selection()
+            if selected_item:
+                income_tree_table.delete(selected_item)
+
+                for item in transaction_table.get_children():
+                    item_values = transaction_table.item(item)["values"]
+                    if item_values[0] == "GELEN" and item_values[1] == description:
+                        transaction_table.delete(item)
+                        break
+                    
+                balance_update()
+                save_to_csv()
+
+            else:
+                messagebox.showwarning("Seçim hatası", "Silinecek bir işlem seçin!")
+        delete_button = tk.Button(income_detail_window, text="Sil", font="Helvatica 11", width=10, command=delete_entry_from_details)
+        delete_button.place(relx=0.5, rely=0.92, anchor="center")
+
+
+# GİDER KATAGORİ YENİ PENCERE EKLEME
 def new_window():
     catagory_window = tk.Toplevel(proje)
     catagory_window.title("Katagoriye Göre Giderler")
-    catagory_window.geometry("380x480+50+100")
+    catagory_window.geometry("380x580+50+100")
     catagory_window.config(bg="#c5cfde")
     catagory_window.resizable(False, False)
 
@@ -247,7 +372,7 @@ def new_window():
     separator.place(x=40, y=55, relwidth=0.8) 
 
     # BUTONLAR OLUŞTURMA
-    for description, amount in expenses.items():
+    for description, amount in sorted(expenses.items()):
         description_button = tk.Button(catagory_window, text=f"{description}", font="Helvatica 11", width=25, command=lambda desc=description, amt=amount:expense_detail_table(desc))
         description_button.pack(pady=3)
 
@@ -316,33 +441,43 @@ def new_window():
         delete_button.place(relx=0.5, rely=0.92, anchor="center")
 
 
-
-
 # GELEN PARA TÜR VE MİKTAR 
 income_type_label = tk.Label(proje, text="Açıklama", font="Helvatica 11")
-income_type_label.place(relx=0.1, rely=0.06, anchor="center")
+income_type_label.place(relx=0.1, rely=0.055, anchor="center")
 income_type_entry = tk.Entry(proje)
-income_type_entry.place(relx=0.26, rely=0.06, anchor="center")
+income_type_entry.place(relx=0.26, rely=0.055, anchor="center")
 
 income_label = tk.Label(proje, text="Gelen Para", font="Helvatica 11")
-income_label.place(relx=0.1, rely=0.15, anchor="center")
+income_label.place(relx=0.1, rely=0.13, anchor="center")
 income_entry = tk.Entry(proje)
-income_entry.place(relx=0.26, rely=0.15, anchor="center")
+income_entry.place(relx=0.26, rely=0.13, anchor="center")
 
 # GİDEN PARA TÜR VE MİKTAR
 expense_type_label = tk.Label(proje, text="Açıklama", font="Helvatica 11")
-expense_type_label.place(relx=0.46, rely=0.06, anchor="center")
+expense_type_label.place(relx=0.46, rely=0.055, anchor="center")
 expense_type_entry = tk.Entry(proje)
-expense_type_entry.place(relx=0.62, rely=0.06, anchor="center")
+expense_type_entry.place(relx=0.62, rely=0.055, anchor="center")
 
 expense_label = tk.Label(proje, text="Giden Para", font="Helvatica 11")
-expense_label.place(relx=0.46, rely=0.15, anchor="center")
+expense_label.place(relx=0.46, rely=0.13, anchor="center")
 expense_entry = tk.Entry(proje)
-expense_entry.place(relx=0.62, rely=0.15, anchor="center")
+expense_entry.place(relx=0.62, rely=0.13, anchor="center")
 
 # BAKİYE BİLGİSİ
 balance_label = tk.Label(proje, text=f"{balance} TL", font="Helvatica 14")
-balance_label.place(relx=0.875, rely=0.06, anchor="center")
+balance_label.place(relx=0.875, rely=0.055, anchor="center")
+
+# EKLE BUTONU
+add_button = tk.Button(proje, text="Ekle", font="Helvatica 10", width=6, command=add_entry)
+add_button.place(relx=0.82, rely=0.13, anchor="center")
+
+# Sil BUTONU
+delete_button = tk.Button(proje, text="Sil", font="Helvatica 10", width=6, command=delete_entry)
+delete_button.place(relx=0.92, rely=0.13, anchor="center")
+
+# Separator (çizgi) ekleme
+separator = ttk.Separator(proje, orient='horizontal')
+separator.place(relx=0.1, rely=0.19, relwidth=0.8) 
 
 # TABLO
 colums=("TÜR", "AÇIKLAMA", "MİKTAR", "TARİH")
@@ -357,40 +492,36 @@ transaction_table.column("MİKTAR", width=100)
 transaction_table.column("TARİH", width=100)
 
 # TABLOYU EKLEMEK
-transaction_table.place(relx=0.1, rely=0.27, relwidth=0.8, relheight=0.55)
+transaction_table.place(relx=0.1, rely=0.23, relwidth=0.8, relheight=0.55)
 
 # Treeview için kaydırma çubuğu ekleme
 scrollbar = ttk.Scrollbar(proje, orient="vertical", command=transaction_table.yview)
 transaction_table.configure(yscroll=scrollbar.set)
-scrollbar.place(relx=0.9, rely=0.27, relheight=0.55)
+scrollbar.place(relx=0.9, rely=0.23, relheight=0.55)
 
-# EKLE BUTONU
-add_button = tk.Button(proje, text="Ekle", font="Helvatica 10", width=6, command=add_entry)
-add_button.place(relx=0.82, rely=0.15, anchor="center")
+# KAR / ZARAR GRAFİĞİ BUTONU
+profit_loss_button = tk.Button(proje, text="Kâr ve Zarar Grafiği", font="Helvatica 11", width=14, command=monthly_status)
+profit_loss_button.place(relx=0.82, rely=0.85, anchor="center")
 
-# Sil BUTONU
-delete_button = tk.Button(proje, text="Sil", font="Helvatica 10", width=6, command=delete_entry)
-delete_button.place(relx=0.92, rely=0.15, anchor="center")
-
-# KATAGORİ GİDER BUTONU
-category_expense_button = tk.Button(proje, text="Kategori Gider Tabloları", font="Helvatica 11", width=17, command=new_window)
-category_expense_button.place(relx=0.22, rely=0.9, anchor="center")
+# AYLIK GİDER PASTA GRAFİĞİ BUTONU
+current_month_pie_chart_button = tk.Button(proje, text="Aylık Gider Grafiği", font="Helvatica 11", width=13, command=current_month_expense_pie_chart)
+current_month_pie_chart_button.place(relx=0.61, rely=0.85, anchor="center")
 
 # GELİR GRAFİĞİ BUTONU
 monthly_income_button = tk.Button(proje, text="Gelir Grafiği", font="Helvatica 11", width=10, command=monthly_income_chart)
-monthly_income_button.place(relx=0.44, rely=0.9, anchor="center")
+monthly_income_button.place(relx=0.43, rely=0.85, anchor="center")
 
 # GİDER GRAFİĞİ BUTONU
 monthly_expense_button = tk.Button(proje, text="Gider Grafiği", font="Helvatica 11", width=10, command=monthly_expense_chart)
-monthly_expense_button.place(relx=0.62, rely=0.9, anchor="center")
+monthly_expense_button.place(relx=0.43, rely=0.93, anchor="center")
 
-# AYLIK GİDER PASTA GRAFİĞİ BUTONU
-current_month_pie_chart_button = tk.Button(proje, text="Aylık Gider Grafiği", font="Helvatica 11", width=14, command=current_month_expense_pie_chart)
-current_month_pie_chart_button.place(relx=0.82, rely=0.9, anchor="center")
+# KATAGORİ GELİR BUTONU
+category_income_button = tk.Button(proje, text="Kategori Gelir Tabloları", font="Helvatica 11", width=17, command=income_new_window)
+category_income_button.place(relx=0.22, rely=0.85, anchor="center")
 
-# Separator (çizgi) ekleme
-separator = ttk.Separator(proje, orient='horizontal')
-separator.place(relx=0.1, rely=0.22, relwidth=0.8) 
+# KATAGORİ GİDER BUTONU
+category_expense_button = tk.Button(proje, text="Kategori Gider Tabloları", font="Helvatica 11", width=17, command=new_window)
+category_expense_button.place(relx=0.22, rely=0.93, anchor="center")
 
 
 load_csv()
