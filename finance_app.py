@@ -13,7 +13,6 @@ proje.resizable(False, False)
 
 
 balance = 0
-# file_name = "finans_deneme.csv"
 file_name = "finans_ilk_deneme.csv"
 
 # VERİLERİ KAYDETME
@@ -119,8 +118,9 @@ def monthly_status():
     colors = ["green" if val >= 0 else "red" for val in profit_loss_values]
     bars = ax.bar(months, profit_loss_values, color=colors)
 
-    ax.set_xticks(range(len(months)))
-    ax.set_xticklabels(months, rotation=45)
+    # X ekseni için doğru ayarlama
+    ax.set_xticks(range(len(months)))  # X ekseninde sabit konumlandırma
+    ax.set_xticklabels(months, rotation=45)  # Etiketleri döndürme
     ax.set_xlabel("Aylar")
     ax.set_ylabel("Kâr / Zarar (TL)")
     ax.set_title("Aylık Kâr ve Zarar Tablosu")
@@ -177,7 +177,70 @@ def monthly_expense_chart():
     plt.show()
 
 
-# Aylık gider pasta grafiği
+# Aylık GELİR PASTA grafiği
+def income_pie_chart(selected_month):
+    expenses = {}
+
+    for item in transaction_table.get_children():
+        item_values = transaction_table.item(item)["values"]
+        if item_values[0] == "GELEN":
+            transaction_date = pd.to_datetime(item_values[3]) 
+            if transaction_date.month == selected_month.month and transaction_date.year == selected_month.year:
+                description = item_values[1]
+                amount = int(item_values[2])
+                if description in expenses:
+                    expenses[description] += amount
+                else:
+                    expenses[description] = amount
+
+    labels = list(expenses.keys())
+    sizes = list(expenses.values())
+
+    if not sizes:
+        messagebox.showwarning("Veri yok", "Bu ay için gider verisi yok!")
+        return
+    
+    # Pasta dilimlerinde hem yüzdeleri hem de toplam tutarı göstermek için özel bir fonksiyon
+    def format_label(pct, all_values):
+        absolute = int(pct/100.*sum(all_values))
+        return f"{pct:.1f}%\n{absolute} TL"
+
+    explode = [0.00] * len(sizes)
+    plt.figure(figsize=(6, 6.2))
+    plt.pie(sizes, labels=labels, shadow=False, explode=explode, autopct=lambda pct:format_label(pct, sizes), startangle=90)
+    plt.axis("equal")
+    plt.title(f"Aylık Gelir Grafiği - {selected_month.strftime('%B %Y')}")
+    plt.get_current_fig_manager().window.wm_geometry("+50+30")
+    
+    # Ay girişi için Entry ekle
+    month_input = tk.Entry(plt.gcf().canvas.manager.window, width=7, font="Helvatica 14")
+    month_input.insert(0, selected_month.strftime('%Y-%m'))  # Varsayılan olarak mevcut ayı göster
+    month_input.pack(pady=10)
+
+    # Değişiklikleri onaylamak için bir buton ekle
+    confirm_button = tk.Button(plt.gcf().canvas.manager.window, font="Helvatica 11" ,text="Farklı Ay Göster", command=lambda: show_custom_income_pie_chart(month_input.get()))
+    confirm_button.pack(pady=1)
+
+    plt.show()
+
+
+# Kullanıcının belirlediği ay için Gelir Pasta Grafiği
+def show_custom_income_pie_chart(month_input):
+    try:
+        selected_month = pd.to_datetime(month_input + "-01")  # Ayın ilk günü
+        income_pie_chart(selected_month)
+    except ValueError:
+        messagebox.showwarning("Hata", "Geçersiz tarih formatı! Lütfen 'YYYY-AA' formatında girin.")
+
+
+# Mevcut Ay Gelir Pasta Grafiği
+def current_month_income_pie_chart():
+    today = datetime.now()
+    selected_month = pd.to_datetime(today.strftime("%Y-%m-1"))  # Ayın ilk günü
+    income_pie_chart(selected_month)
+
+
+# Aylık GİDER PASTA grafiği
 def expense_pie_chart(selected_month):
     expenses = {}
 
@@ -214,7 +277,7 @@ def expense_pie_chart(selected_month):
     
     # Ay girişi için Entry ekle
     month_input = tk.Entry(plt.gcf().canvas.manager.window, width=7, font="Helvatica 14")
-    month_input.insert(0, selected_month.strftime('%Y-%m'))
+    month_input.insert(0, selected_month.strftime('%Y-%m'))  # Varsayılan olarak mevcut ayı göster
     month_input.pack(pady=10)
 
     # Değişiklikleri onaylamak için bir buton ekle
@@ -246,7 +309,7 @@ def income_new_window():
     catagory_window.title("Katagoriye Göre Gelirler")
     catagory_window.geometry("380x580+50+100")
     catagory_window.config(bg="#c5cfde")
-    catagory_window.resizable(False, False)
+    #catagory_window.resizable(False, False)
 
     # GELENLERİ BULMA VE TOPLAMA
     income = {}
@@ -344,7 +407,7 @@ def new_window():
     catagory_window.title("Katagoriye Göre Giderler")
     catagory_window.geometry("380x580+50+100")
     catagory_window.config(bg="#c5cfde")
-    catagory_window.resizable(False, False)
+    #catagory_window.resizable(False, False)
 
     #GİDERLERİ BULMA VE TOPLAMA
     expenses = {}
@@ -432,7 +495,6 @@ def new_window():
 
                 balance_update()  
                 save_to_csv()  
-
             else:
                 messagebox.showwarning("Seçim hatası", "Silinecek bir işlem seçin!")
 
@@ -503,9 +565,13 @@ scrollbar.place(relx=0.9, rely=0.23, relheight=0.55)
 profit_loss_button = tk.Button(proje, text="Kâr ve Zarar Grafiği", font="Helvatica 11", width=14, command=monthly_status)
 profit_loss_button.place(relx=0.82, rely=0.85, anchor="center")
 
+# AYLIK GELİR PASTA GRAFİĞİ BUTONU
+income_month_pie_chart_button = tk.Button(proje, text="Aylık Gelir Grafiği", font="Helvatica 11", width=13, command=current_month_income_pie_chart)
+income_month_pie_chart_button.place(relx=0.61, rely=0.85, anchor="center")
+
 # AYLIK GİDER PASTA GRAFİĞİ BUTONU
 current_month_pie_chart_button = tk.Button(proje, text="Aylık Gider Grafiği", font="Helvatica 11", width=13, command=current_month_expense_pie_chart)
-current_month_pie_chart_button.place(relx=0.61, rely=0.85, anchor="center")
+current_month_pie_chart_button.place(relx=0.61, rely=0.93, anchor="center")
 
 # GELİR GRAFİĞİ BUTONU
 monthly_income_button = tk.Button(proje, text="Gelir Grafiği", font="Helvatica 11", width=10, command=monthly_income_chart)
