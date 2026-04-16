@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk 
 import pandas as pd
+import os
+from tkinter import filedialog
 import matplotlib.pyplot as plt
 from datetime import datetime
 
@@ -13,7 +15,25 @@ proje.resizable(False, False)
 
 
 balance = 0
-file_name = "finans_ilk_deneme.csv"
+config_file = "last_file.txt"
+
+# Son kullanılan dosya yolunu alma
+def get_last_used_file():
+    if os.path.exists(config_file):
+        with open(config_file, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    return ""
+
+# Son kullanılan dosya yolunu kaydetme
+def save_last_used_file(path):
+    with open(config_file, "w", encoding="utf-8") as f:
+        f.write(path)
+
+
+file_name = get_last_used_file()
+if not file_name or not os.path.exists(file_name):
+    file_name = "finans_ilk_deneme.csv"  # varsayılan dosya
+
 
 # VERİLERİ KAYDETME
 def save_to_csv():
@@ -24,6 +44,54 @@ def save_to_csv():
 
     df = pd.DataFrame(data, columns=["TÜR", "AÇIKLAMA", "MİKTAR", "TARİH"])
     df.to_csv(file_name, index=False)
+
+
+# DOSYA SEÇME yada OLUŞTURMA FONKSİYONU
+def file_options():
+    response = messagebox.askyesnocancel("Dosya İşlemleri", "Mevcut bir dosya mı seçmek istiyorsunuz?")
+    
+    if response is True:
+        choose_file()
+    elif response is False:
+        create_new_file()
+    elif response is None:
+        messagebox.showinfo("İptal Edildi", "Dosya işlemi iptal edildi.")
+
+
+# YENİ DOSYA OLUŞTURMA
+def create_new_file():
+    global file_name
+    new_file = filedialog.asksaveasfilename(
+        defaultextension=".csv",
+        filetypes=[("CSV dosyaları", "*.csv")],
+        title="Yeni bir CSV dosyası oluştur"
+    )
+    if new_file:
+        file_name = new_file
+        # Boş sütun başlıklarıyla dosyayı oluştur
+        df = pd.DataFrame(columns=["TÜR", "AÇIKLAMA", "MİKTAR", "TARİH"])
+        df.to_csv(file_name, index=False)
+        transaction_table.delete(*transaction_table.get_children())  # Önceki verileri temizle
+        balance_update()
+        messagebox.showinfo("Dosya Oluşturuldu", f"Yeni dosya:\n{file_name}")
+
+    save_last_used_file(file_name)
+    
+
+# DOSYA SEÇME FONKSİYONU
+def choose_file():
+    global file_name
+    chosen_file = filedialog.askopenfilename(
+        title="Bir CSV dosyası seçin",
+        filetypes=[("CSV dosyaları", "*.csv")]
+    )
+    if chosen_file:
+        file_name = chosen_file
+        transaction_table.delete(*transaction_table.get_children())  # Tablodaki eski verileri temizle
+        load_csv()
+        messagebox.showinfo("Dosya Seçildi", f"Seçilen dosya:\n{file_name}")
+
+    save_last_used_file(file_name)
 
 
 # VERİLERİ YÜKLEME
@@ -143,7 +211,7 @@ def monthly_income_chart():
         messagebox.showwarning("Veri yok", "Grafik için yeterli veri yok!")
         return
 
-    ax = monthly_income.plot(kind="bar", color="#929695", figsize=(7,6))
+    ax = monthly_income.plot(kind="bar", color="#929695", figsize=(8,6))
     ax.bar_label(ax.containers[0], label_type="center")
     plt.title("Aylık Gelir Grafiği")
     plt.xlabel("AY")
@@ -166,7 +234,7 @@ def monthly_expense_chart():
         messagebox.showwarning("Veri yok", "Grafik için yeterli veri yok!")
         return
 
-    ax = monthly_income.plot(kind="bar", color="#929695", figsize=(7,6))
+    ax = monthly_income.plot(kind="bar", color="#929695", figsize=(8,6))
     ax.bar_label(ax.containers[0], label_type="center")
     plt.title("Aylık Gider Grafiği")
     plt.xlabel("AY")
@@ -305,47 +373,64 @@ def current_month_expense_pie_chart():
 
 # GELİR KATAGORİ YENİ PENCERE EKLEME
 def income_new_window():
-    catagory_window = tk.Toplevel(proje)
-    catagory_window.title("Katagoriye Göre Gelirler")
-    catagory_window.geometry("380x580+50+100")
-    catagory_window.config(bg="#c5cfde")
-    #catagory_window.resizable(False, False)
-
-    # GELENLERİ BULMA VE TOPLAMA
     income = {}
     for item in transaction_table.get_children():
         item_values = transaction_table.item(item)["values"]
         if item_values[0] == "GELEN":
             description = item_values[1]
-            amount = item_values[2]
-            if description in income:
-                income[description] += int(amount)
-            else:
-                income[description] = int(amount)
+            amount = int(item_values[2])
+            income[description] = income.get(description, 0) + amount
 
     if not income:
-        messagebox.showwarning("Veri yok","Gider verisi bulunamadı")
-        catagory_window.destroy()
+        messagebox.showwarning("Veri yok", "Gelir verisi bulunamadı")
         return
 
-    # YENİ PENCERE ETİKETLERİ
-    new_window_title = tk.Label(catagory_window, text="KATEGORİYE GÖRE GELİR TABLOLARI", font="Helvatica 13", bg="#c5cfde")
-    new_window_title.pack(pady=(17,25))
+    catagory_window = tk.Toplevel(proje)
+    catagory_window.title("Kategoriye Göre Gelirler")
+    catagory_window.geometry("380x580+50+100")
+    catagory_window.config(bg="#c5cfde")
+    catagory_window.resizable(False, False)
 
-    # Seperator Ekleme
+    title_label = tk.Label(catagory_window, text="KATEGORİYE GÖRE GELİR TABLOLARI", font="Helvatica 13", bg="#c5cfde")
+    title_label.pack(pady=(15, 10))
+
     separator = ttk.Separator(catagory_window, orient="horizontal")
-    separator.place(x=40, y=55, relwidth=0.8)
+    separator.pack(fill="x", padx=20)
 
-    # Butonları Oluşturma
+    # Scrollable frame kur
+    canvas = tk.Canvas(catagory_window, bg="#c5cfde", highlightthickness=0)
+    scrollbar = ttk.Scrollbar(catagory_window, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+
+    inner_frame = tk.Frame(canvas, bg="#c5cfde")
+    canvas.create_window((0, 0), window=inner_frame, anchor="n")
+
+    def on_frame_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    inner_frame.bind("<Configure>", on_frame_configure)
+
+    # Kategori butonlarını oluştur
     for description, amount in sorted(income.items()):
-        description_button = tk. Button(catagory_window, text=f"{description}", font="Helvatica 11", width=25, command=lambda desc=description, amt=amount:income_detail_table(desc))
-        description_button.pack(pady=3)
+        btn_frame = tk.Frame(inner_frame, bg="#c5cfde")
+        btn_frame.pack(fill="x")
+        description_button = tk.Button(
+            btn_frame,
+            text=description,
+            font="Helvatica 11",
+            width=25,
+            command=lambda desc=description, amt=amount: income_detail_table(desc)
+        )
+        description_button.pack(pady=5, padx=55, anchor="center")
+
 
     # DETAY İÇİN YENİ PENCERE OLUŞTURMA
     def income_detail_table(description):
         income_detail_window = tk.Toplevel()
         income_detail_window.title(f"{description} Detay Tablosu")
-        income_detail_window.geometry("550x420+120+100")
+        income_detail_window.geometry("550x420+110+100")
         income_detail_window.configure(bg="#c5cfde")
         income_detail_window.resizable(False, False)
 
@@ -402,48 +487,65 @@ def income_new_window():
 
 
 # GİDER KATAGORİ YENİ PENCERE EKLEME
-def new_window():
-    catagory_window = tk.Toplevel(proje)
-    catagory_window.title("Katagoriye Göre Giderler")
-    catagory_window.geometry("380x580+50+100")
-    catagory_window.config(bg="#c5cfde")
-    #catagory_window.resizable(False, False)
-
-    #GİDERLERİ BULMA VE TOPLAMA
+def expense_new_window():
     expenses = {}
     for item in transaction_table.get_children():
         item_values = transaction_table.item(item)["values"]
         if item_values[0] == "GİDEN":
             description = item_values[1]
-            amount = item_values[2]
-            if description in expenses:
-                expenses[description] += int(amount)
-            else:
-                expenses[description] = int(amount)    
+            amount = int(item_values[2])
+            expenses[description] = expenses.get(description, 0) + amount
 
     if not expenses:
-        messagebox.showwarning("Veri yok","Gider verisi bulunamadı")
-        catagory_window.destroy()
+        messagebox.showwarning("Veri yok", "Gider verisi bulunamadı")
         return
-    
-    # YENİ PENCERE ETİKETLERİ
-    new_window_title = tk.Label(catagory_window, text="KATEGORİYE GÖRE GİDER TABLOLARI", font="Helvatica 13", bg="#c5cfde")
-    new_window_title.pack(pady=(17,25))
 
-    # Separator (çizgi) ekleme
-    separator = ttk.Separator(catagory_window, orient='horizontal')
-    separator.place(x=40, y=55, relwidth=0.8) 
+    catagory_window = tk.Toplevel(proje)
+    catagory_window.title("Kategoriye Göre Giderler")
+    catagory_window.geometry("380x580+50+100")
+    catagory_window.config(bg="#c5cfde")
+    catagory_window.resizable(False, False)
 
-    # BUTONLAR OLUŞTURMA
+    title_label = tk.Label(catagory_window, text="KATEGORİYE GÖRE GİDER TABLOLARI", font="Helvatica 13", bg="#c5cfde")
+    title_label.pack(pady=(15, 10))
+
+    separator = ttk.Separator(catagory_window, orient="horizontal")
+    separator.pack(fill="x", padx=20)
+
+    # Scrollable frame kur
+    canvas = tk.Canvas(catagory_window, bg="#c5cfde", highlightthickness=0)
+    scrollbar = ttk.Scrollbar(catagory_window, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+
+    inner_frame = tk.Frame(canvas, bg="#c5cfde")
+    canvas.create_window((0, 0), window=inner_frame, anchor="n")
+
+    def on_frame_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    inner_frame.bind("<Configure>", on_frame_configure)
+
+    # Kategori butonlarını oluştur
     for description, amount in sorted(expenses.items()):
-        description_button = tk.Button(catagory_window, text=f"{description}", font="Helvatica 11", width=25, command=lambda desc=description, amt=amount:expense_detail_table(desc))
-        description_button.pack(pady=3)
+        btn_frame = tk.Frame(inner_frame, bg="#c5cfde")
+        btn_frame.pack(fill="x")
+        description_button = tk.Button(
+            btn_frame,
+            text=description,
+            font="Helvatica 11",
+            width=25,
+            command=lambda desc=description, amt=amount: expense_detail_table(desc)
+        )
+        description_button.pack(pady=5, padx=55, anchor="center")
+
 
     # DETAY İÇİN YENİ PENCERE OLUŞTURMA
     def expense_detail_table(description):
         expense_detail_window = tk.Toplevel()
         expense_detail_window.title(F"{description} Detay Tablosu")
-        expense_detail_window.geometry("550x420+120+100")
+        expense_detail_window.geometry("550x420+110+100")
         expense_detail_window.configure(bg="#c5cfde")
         expense_detail_window.resizable(False, False)
 
@@ -491,7 +593,7 @@ def new_window():
                     item_values = transaction_table.item(item)["values"]
                     if item_values[0] == "GİDEN" and item_values[1] == description:
                         transaction_table.delete(item)
-                        break  # İlk bulduğunda sil ve döngüden çık
+                        break 
 
                 balance_update()  
                 save_to_csv()  
@@ -586,8 +688,12 @@ category_income_button = tk.Button(proje, text="Kategori Gelir Tabloları", font
 category_income_button.place(relx=0.22, rely=0.85, anchor="center")
 
 # KATAGORİ GİDER BUTONU
-category_expense_button = tk.Button(proje, text="Kategori Gider Tabloları", font="Helvatica 11", width=17, command=new_window)
+category_expense_button = tk.Button(proje, text="Kategori Gider Tabloları", font="Helvatica 11", width=17, command=expense_new_window)
 category_expense_button.place(relx=0.22, rely=0.93, anchor="center")
+
+# DOSYA SEÇME VE OLUŞTURMA BUTONU
+file_button = tk.Button(proje, text="Dosya Seç / Oluştur", font="Helvatica 11", width=14, command=file_options)
+file_button.place(relx=0.82, rely=0.93, anchor="center")
 
 
 load_csv()
